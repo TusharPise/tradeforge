@@ -1,0 +1,31 @@
+{
+  "name": "tradeforge",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "npm@11.19.0",
+  "description": "Production-style full-stack paper-trading and personal-finance platform",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "turbo run dev",
+    "dev:api": "npm run dev --workspace=apps/api",
+    "dev:web": "npm run dev --workspace=apps/web",
+    "build": "turbo run build",
+    "build:packages": "npm run build --workspace=packages/config --workspace=packages/types --workspace=packages/validation",
+    "build:api": "npm run build --workspace=apps/api",
+    "build:web": "npm run build --workspace=apps/web",
+    "lint": "turbo run lint",
+    "check-types": "turbo run check-types",
+    "prisma:validate": "npm run prisma:validate --workspace=apps/api",
+    "prisma:generate": "npm run prisma:generate --workspace=apps/api",
+    "prisma:push": "npm run prisma:push --workspace=apps/api",
+    "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md}\""
+  },
+  "devDependencies": {
+    "prettier": "^3.5.0",
+    "turbo": "^2.4.0",
+    "typescript": "^5.7.3"
+  }
+}

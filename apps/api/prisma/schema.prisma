@@ -1,0 +1,326 @@
+// ==============================================================================
+// TradeForge - Prisma Schema
+// Database: PostgreSQL 18
+// NOTE: Financial values strictly use Decimal types to prevent float inaccuracies.
+// ==============================================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ------------------------------------------------------------------------------
+// Enums
+// ------------------------------------------------------------------------------
+
+enum UserRole {
+  ADMIN
+  TRADER
+  VIEWER
+}
+
+enum AccountType {
+  PAPER
+  SIMULATION
+}
+
+enum AssetType {
+  STOCK
+  CRYPTO
+  FOREX
+  COMMODITY
+  ETF
+}
+
+enum OrderType {
+  MARKET
+  LIMIT
+  STOP
+  STOP_LIMIT
+}
+
+enum OrderSide {
+  BUY
+  SELL
+}
+
+enum OrderStatus {
+  PENDING
+  OPEN
+  PARTIALLY_FILLED
+  FILLED
+  CANCELLED
+  REJECTED
+  EXPIRED
+}
+
+enum TimeInForce {
+  DAY
+  GTC
+  IOC
+  FOK
+}
+
+enum TransactionType {
+  DEPOSIT
+  WITHDRAWAL
+  TRADE_BUY
+  TRADE_SELL
+  FEE
+  DIVIDEND
+  ADJUSTMENT
+}
+
+enum ExpenseCategory {
+  HOUSING
+  FOOD
+  TRANSPORTATION
+  UTILITIES
+  HEALTHCARE
+  ENTERTAINMENT
+  INVESTMENTS
+  EDUCATION
+  SAVINGS
+  OTHER
+}
+
+enum AlertCondition {
+  ABOVE
+  BELOW
+}
+
+enum NotificationType {
+  PRICE_ALERT
+  ORDER_FILLED
+  SECURITY
+  SYSTEM
+}
+
+// ------------------------------------------------------------------------------
+// Models
+// ------------------------------------------------------------------------------
+
+model User {
+  id           String      @id @default(uuid()) @db.Uuid
+  email        String      @unique
+  passwordHash String
+  firstName    String?
+  lastName     String?
+  role         UserRole    @default(TRADER)
+  isActive     Boolean     @default(true)
+  isEmailVerified Boolean     @default(false)
+  isKycVerified   Boolean     @default(false)
+  googleId     String?      @unique
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+
+  accounts     Account[]
+  portfolios   Portfolio[]
+  expenses     Expense[]
+  auditLogs    AuditLog[]
+  priceAlerts  PriceAlert[]
+  notifications Notification[]
+  linkedAccounts LinkedAccount[]
+
+  @@map("users")
+}
+
+model Account {
+  id           String          @id @default(uuid()) @db.Uuid
+  userId       String          @db.Uuid
+  user         User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name         String
+  type         AccountType     @default(PAPER)
+  currency     String          @default("USD")
+  // Financial balance stored as Decimal (18 digits, 4 decimal places)
+  balance      Decimal         @default(0.0000) @db.Decimal(18, 4)
+  isDefault    Boolean         @default(false)
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+
+  linkedAccountId String?      @unique @db.Uuid
+  linkedAccount   LinkedAccount? @relation(fields: [linkedAccountId], references: [id], onDelete: Cascade)
+
+  transactions Transaction[]
+
+  @@map("accounts")
+}
+
+model Asset {
+  id           String      @id @default(uuid()) @db.Uuid
+  symbol       String      @unique
+  name         String
+  type         AssetType
+  currency     String      @default("USD")
+  currentPrice Decimal?    @db.Decimal(18, 4)
+  isActive     Boolean     @default(true)
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+
+  positions    Position[]
+  orders       Order[]
+  priceAlerts  PriceAlert[]
+
+  @@map("assets")
+}
+
+model Portfolio {
+  id          String      @id @default(uuid()) @db.Uuid
+  userId      String      @db.Uuid
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name        String
+  description String?
+  currency    String      @default("USD")
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  linkedAccountId String?      @unique @db.Uuid
+  linkedAccount   LinkedAccount? @relation(fields: [linkedAccountId], references: [id], onDelete: Cascade)
+
+  positions   Position[]
+  orders      Order[]
+
+  @@map("portfolios")
+}
+
+model Position {
+  id           String      @id @default(uuid()) @db.Uuid
+  portfolioId  String      @db.Uuid
+  portfolio    Portfolio   @relation(fields: [portfolioId], references: [id], onDelete: Cascade)
+  assetId      String      @db.Uuid
+  asset        Asset       @relation(fields: [assetId], references: [id], onDelete: Restrict)
+  // Quantities support high precision (e.g. fractional crypto: 24 digits, 8 decimals)
+  quantity     Decimal     @default(0.00000000) @db.Decimal(24, 8)
+  averageCost  Decimal     @default(0.0000) @db.Decimal(18, 4)
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+
+  @@unique([portfolioId, assetId])
+  @@map("positions")
+}
+
+model Order {
+  id                    String      @id @default(uuid()) @db.Uuid
+  portfolioId           String      @db.Uuid
+  portfolio             Portfolio   @relation(fields: [portfolioId], references: [id], onDelete: Cascade)
+  assetId               String      @db.Uuid
+  asset                 Asset       @relation(fields: [assetId], references: [id], onDelete: Restrict)
+  type                  OrderType
+  side                  OrderSide
+  status                OrderStatus @default(PENDING)
+  timeInForce           TimeInForce @default(DAY)
+  quantity              Decimal     @db.Decimal(24, 8)
+  filledQuantity        Decimal     @default(0.00000000) @db.Decimal(24, 8)
+  price                 Decimal?    @db.Decimal(18, 4)
+  averageExecutionPrice Decimal?    @db.Decimal(18, 4)
+  createdAt             DateTime    @default(now())
+  updatedAt             DateTime    @updatedAt
+
+  @@index([portfolioId, status])
+  @@map("orders")
+}
+
+model Transaction {
+  id          String          @id @default(uuid()) @db.Uuid
+  accountId   String          @db.Uuid
+  account     Account         @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  type        TransactionType
+  amount      Decimal         @db.Decimal(18, 4)
+  currency    String          @default("USD")
+  referenceId String?
+  description String?
+  createdAt   DateTime        @default(now())
+
+  @@index([accountId, createdAt])
+  @@map("transactions")
+}
+
+model Expense {
+  id          String          @id @default(uuid()) @db.Uuid
+  userId      String          @db.Uuid
+  user        User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  category    ExpenseCategory
+  amount      Decimal         @db.Decimal(18, 4)
+  currency    String          @default("USD")
+  date        DateTime        @default(now())
+  description String?
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  linkedAccountId String?        @db.Uuid
+  linkedAccount   LinkedAccount? @relation(fields: [linkedAccountId], references: [id], onDelete: Cascade)
+
+  @@index([userId, date])
+  @@map("expenses")
+}
+
+model AuditLog {
+  id         String   @id @default(uuid()) @db.Uuid
+  userId     String?  @db.Uuid
+  user       User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  action     String
+  entityType String
+  entityId   String?
+  metadata   Json?
+  ipAddress  String?
+  createdAt  DateTime @default(now())
+
+  @@index([userId, createdAt])
+  @@map("audit_logs")
+}
+
+model PriceAlert {
+  id          String         @id @default(uuid()) @db.Uuid
+  userId      String         @db.Uuid
+  user        User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  assetId     String         @db.Uuid
+  asset       Asset          @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  targetPrice Decimal        @db.Decimal(18, 4)
+  condition   AlertCondition
+  isTriggered Boolean        @default(false)
+  isActive    Boolean        @default(true)
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  @@index([assetId, isActive, isTriggered])
+  @@index([userId])
+  @@map("price_alerts")
+}
+
+model Notification {
+  id        String           @id @default(uuid()) @db.Uuid
+  userId    String           @db.Uuid
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title     String
+  message   String
+  type      NotificationType
+  isRead    Boolean          @default(false)
+  metadata  Json?
+  createdAt DateTime         @default(now())
+
+  @@index([userId, isRead])
+  @@index([userId, createdAt])
+  @@map("notifications")
+}
+
+model LinkedAccount {
+  id          String   @id @default(uuid()) @db.Uuid
+  userId      String   @db.Uuid
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  bankName    String
+  last4       String   @db.VarChar(4)
+  isDefault   Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  account     Account?
+  portfolio   Portfolio?
+  expenses    Expense[]
+
+  @@index([userId])
+  @@map("linked_accounts")
+}
