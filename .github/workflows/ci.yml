@@ -26,6 +26,11 @@ jobs:
         run: npx prisma generate
         working-directory: ./apps/api
         
+      - name: Build Shared Packages
+        run: |
+          npm run build --workspace=@tradeforge/types
+          npm run build --workspace=@tradeforge/validation
+
       - name: Build Web App
         run: npm run build --workspace=apps/web
         
