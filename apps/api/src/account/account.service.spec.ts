@@ -16,6 +16,9 @@ describe('AccountService', () => {
         update: jest.fn(),
         create: jest.fn(),
       },
+      linkedAccount: {
+        findFirst: jest.fn().mockResolvedValue({ id: 'bank-1' }),
+      },
       transaction: {
         create: jest.fn(),
       },

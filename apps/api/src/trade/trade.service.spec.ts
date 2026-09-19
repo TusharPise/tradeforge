@@ -40,6 +40,9 @@ describe('TradeService', () => {
       auditLog: {
         create: jest.fn(),
       },
+      linkedAccount: {
+        findFirst: jest.fn().mockResolvedValue({ id: 'bank-1' }),
+      },
       $transaction: jest.fn((callback) => callback(prismaService)),
     };
 
